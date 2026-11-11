@@ -54,17 +54,18 @@ function setSyncLabel(t){const el=$('#sync');if(el)el.textContent=t}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
 setInterval(()=>{if(!document.hidden)sync()},45000);
 /* ---------- usmjeravanje ---------- */
-const route=()=>{const h=(location.hash||'#/').slice(1);const m=h.match(/^\/o\/([\w-]+)/);return m?{v:'osoba',id:m[1]}:h.startsWith('/osobe')?{v:'osobe'}:h.startsWith('/admin')?{v:'admin'}:h.startsWith('/vise')?{v:'vise'}:h.startsWith('/stablo')?{v:'stablo'}:{v:'pocetna'}};
+const route=()=>{const h=(location.hash||'#/').slice(1);const m=h.match(/^\/o\/([\w-]+)/);return m?{v:'osoba',id:m[1]}:h.startsWith('/osobe')?{v:'osobe'}:h.startsWith('/admin')?{v:'admin'}:h.startsWith('/vise')?{v:'vise'}:h.startsWith('/stablo')?{v:'stablo'}:h.startsWith('/knjiga')?{v:'knjiga'}:{v:'pocetna'}};
 window.addEventListener('hashchange',()=>{closeModalSilently();render();window.scrollTo(0,0)});
 function closeModalSilently(){if(modal.open){modal.open=false}const m=$('#modal');m.hidden=true;m.innerHTML=''}
-const ICON={home:'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',tree:'<circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M12 7.5V12M6 16.5V12h12v4.5"/>',list:'<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>',more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>'};
+const ICON={home:'<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',tree:'<circle cx="12" cy="5" r="2.5"/><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M12 7.5V12M6 16.5V12h12v4.5"/>',book:'<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 19V5M8 7h7"/>',list:'<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3"/>',more:'<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>'};
 let scrollKeep=0;
 function render(keep){if(!A){renderAuth();return}if(keep)scrollKeep=window.scrollY;const r=route();
-  const tabs=[['#/','home','Početna','pocetna'],['#/stablo','tree','Stablo','stablo'],['#/osobe','list','Osobe','osobe']].concat(isAdmin()?[['#/admin','key','Admin','admin']]:[]).concat([['#/vise','more','Više','vise']]);
-  const cur=r.v==='osoba'?'stablo':r.v;
-  let body='';try{body=r.v==='osoba'?vPerson(r.id):r.v==='osobe'?vList():r.v==='admin'?vAdmin():r.v==='vise'?vMore():r.v==='stablo'?vTreeStart():vHome()}catch(e){body='<p class="neg">'+esc(e.message)+'</p>'}
+  const tabs=[['#/','home','Početna','pocetna'],['#/stablo','tree','Stablo','stablo'],['#/knjiga','book','Knjiga','knjiga'],['#/osobe','list','Osobe','osobe']].concat(isAdmin()?[['#/admin','key','Admin','admin']]:[]).concat([['#/vise','more','Više','vise']]);
+  const cur=r.v==='osoba'?'osobe':r.v;
+  let body='';try{body=r.v==='osoba'?vPerson(r.id):r.v==='osobe'?vList():r.v==='admin'?vAdmin():r.v==='vise'?vMore():r.v==='stablo'?vTree():r.v==='knjiga'?vBook():vHome()}catch(e){body='<p class="neg">'+esc(e.message)+'</p>'}
   $('#root').innerHTML='<header class="top"><span class="mark" aria-hidden="true">R</span><span class="brand"><b>'+esc(window.ROD_NASLOV||'Rodoslov')+'</b><small>'+esc(window.ROD_PODNASLOV||'')+'</small></span><span class="sync" id="sync"></span></header><main class="wrap">'+body+'</main>'
     +'<nav class="bar">'+tabs.map(t=>'<a href="'+t[0]+'"'+(cur===t[3]?' class="on"':'')+'><svg viewBox="0 0 24 24">'+ICON[t[1]]+'</svg>'+t[2]+'</a>').join('')+'</nav>';
+  document.body.classList.toggle('treemode',r.v==='stablo');if(r.v==='stablo')tAfterRender();if(r.v==='knjiga')bAfterRender();
   if(keep)window.scrollTo(0,scrollKeep);
   if(r.v==='admin'){if(keep&&AD.log)fillAdmin();else loadAdmin()}}
 /* ---------- prijava ---------- */
@@ -121,7 +122,7 @@ function vPerson(id){const p=P(id);if(!p)return '<p class="empty">Osoba nije pro
   const fa=P(p.father),mo=P(p.mother),pa=partnersOf(id),ch=childrenOf(id),sib=siblingsOf(p),ed=canEdit(p);
   let h='<div class="focus"><div class="lvl-t">Roditelji</div><div class="lvl">'+(fa?node(fa):ed?addNode('addParent','Otac',id+':m'):'')+(mo?node(mo):ed?addNode('addParent','Majka',id+':z'):'')+(!fa&&!mo&&!ed?'<span class="hint">nepoznati</span>':'')+'</div><div class="vline"></div>'
     +'<div class="center"><div class="me">'+ph(p,'big')+'<div><div class="nm">'+esc(nameOf(p))+'</div>'+(p.birthName?'<div class="hint">rođ. '+esc(p.birthName)+'</div>':'')+'<div class="yr">'+esc(years(p))+'</div>'+(p.locked?'<div class="lock">🔒 zaključano</div>':'')+'</div></div>'
-    +pa.map(x=>'<span class="knot" title="'+(x.rel.kind==='partner'?'partner':'brak')+'">✦</span>'+node(x.p)).join('')+(ed?addNode('addPartner','Partner',id):'')+'</div>'
+    +pa.map(x=>'<span class="knot" title="'+(x.rel.kind==='partner'?'partner':'brak')+'">✦</span>'+node(x.p)).join('')+(ed&&!pa.length?addNode('addPartner','Partner',id):'')+'</div>'+(ed&&pa.length?'<button class="link" data-a="addPartner" data-id="'+id+'">+ još jedan partner</button>':'')
     +'<div class="vline"></div><div class="lvl-t">Djeca</div><div class="lvl">'+ch.map(c=>node(c)).join('')+addNode('addChild','Dijete',id)+'</div>'
     +(sib.length?'<div class="lvl-t">Braća i sestre</div><div class="sib">'+sib.map(s=>'<button class="chip" data-go="'+s.id+'">'+ph(s,'sm')+esc(nameOf(s))+'</button>').join('')+'</div>':'')+'</div>';
   const F=[['Rođen'+(p.sex==='z'?'a':''),[fmtDate(p.born),esc(p.bornPlace||'')].filter(Boolean).join(', ')],['Umro'+(p.sex==='z'?'la':''),[fmtDate(p.died),esc(p.diedPlace||'')].filter(Boolean).join(', ')],['Živi u',esc(p.place||'')],['Zanimanje',esc(p.job||'')],
@@ -131,7 +132,7 @@ function vPerson(id){const p=P(id);if(!p)return '<p class="empty">Osoba nije pro
     +'<div class="meta">'+(p.by?'Zadnja promjena: '+esc(p.by)+', '+new Date(p.updated).toLocaleDateString('hr-HR'):'')+'</div></div>'
     +'<div class="btns">'+(ed?'<button class="btn primary" data-a="edit" data-id="'+id+'">Uredi</button><button class="btn" data-a="photo" data-id="'+id+'">Fotografija</button>':'<span class="hint">🔒 Ovu osobu može mijenjati samo administrator.</span>')
     +(isAdmin()?'<button class="btn" data-a="lock" data-id="'+id+'">'+(p.locked?'Otključaj':'Zaključaj')+'</button><button class="btn danger" data-a="del" data-id="'+id+'">Obriši</button>':'')
-    +(ME===id?'':'<button class="btn small" data-a="me" data-id="'+id+'">Ovo sam ja</button>')+'</div>'
+    +'<a class="btn small" href="#/stablo?o='+id+'">Cijelo stablo</a><a class="btn small" href="#/knjiga?o='+id+'">U knjizi</a>'+(ME===id?'':'<button class="btn small" data-a="me" data-id="'+id+'">Ovo sam ja</button>')+'</div>'
     +(pa.length&&ed?'<p class="hint">'+pa.map(x=>'<button class="link" data-a="unrel" data-id="'+x.rel.id+'">Ukloni vezu s '+esc(nameOf(x.p))+'</button>').join(' · ')+'</p>':'');
   return h}
 /* ---------- uređivanje ---------- */
@@ -204,7 +205,7 @@ async function doImport(){const i=document.createElement('input');i.type='file';
   try{const empty=!Object.values(D.persons).some(p=>!p.deleted);
     if(empty&&Array.isArray(j.persons)){toast('Uvoz osoba …');for(let k=0;k<j.persons.length;k+=20)await api('/tree/admin/seed',{method:'POST',body:{first:k===0,persons:j.persons.slice(k,k+20)}});
       for(let k=0;k<(j.rels||[]).length;k+=20)await api('/tree/admin/seed',{method:'POST',body:{rels:j.rels.slice(k,k+20)}});await sync()}
-    const phs=j.photos||[];let n=0;for(const x of phs){if(!P(x.personId)||P(x.personId).photo)continue;toast('Fotografije '+(++n)+' / '+phs.length+' …');await api('/tree/photo',{method:'POST',body:{personId:x.personId,data:x.data}})}
+    const phs=j.photos||[];let n=0;for(const x of phs){if(!P(x.personId)||(P(x.personId).photo&&!j.replacePhotos))continue;toast('Fotografije '+(++n)+' / '+phs.length+' …');await api('/tree/photo',{method:'POST',body:{personId:x.personId,data:x.data}})}
     await sync(true);toast('Uvoz gotov.');loadAdmin()}catch(e){toast(err(e))}};i.click()}
 /* ---------- više ---------- */
 function vMore(){return '<h2>Više</h2><div class="card"><div class="eyebrow">Moj račun</div><p><b>'+esc(A.user.name)+'</b><br><span class="hint">'+esc(A.user.email)+(isAdmin()?' · administrator':'')+'</span></p>'+(ME&&P(ME)?'<p class="hint">Ti si: '+esc(nameOf(P(ME)))+'</p>':'<p class="hint">Na svojoj kartici u stablu pritisni „Ovo sam ja“, tada se stablo otvara kod tebe.</p>')+'<div class="btns"><button class="btn" data-a="refresh">Osvježi podatke</button><button class="btn danger" data-a="logout">Odjava</button></div></div>'
@@ -236,9 +237,107 @@ document.addEventListener('click',async e=>{const g=e.target.closest('[data-go]'
     try{for(let k=0;k<L.length;k+=6)await Promise.all(L.slice(k,k+6).map(p=>api('/tree/person/'+p.id+'/lock',{method:'POST',body:{locked:v==='1'}})));await sync();toast(v==='1'?'Sve osobe zaključane.':'Sve osobe otključane.');loadAdmin()}catch(x){toast(err(x))}}
   else if(a==='restore'||a==='undo'){try{await api(a==='restore'?'/tree/admin/restore':'/tree/admin/undo-add',{method:'POST',body:{id:+v}});await sync();loadAdmin();toast('Vraćeno.')}catch(x){toast(err(x))}}
   else if(a==='import')doImport();
+  else if(a==='tz'){if(v==='+')tZoom(1.25);else if(v==='-')tZoom(.8);else if(v==='fit')tFit();else if(ME)tCenter(ME,.9)}
+  else if(a==='bgen'){const pg=document.querySelector('.page[data-gen="'+v+'"]'),bk=$('#book');if(pg&&bk)bk.scrollTo({left:pg.offsetLeft-bk.offsetLeft,behavior:'smooth'})}
+  else if(a==='bstep'){const bk=$('#book');if(bk)bk.scrollBy({left:(+v)*bk.clientWidth,behavior:'smooth'})}
   else if(a==='refresh'){await sync(true);toast('Osvježeno.')}
   else if(a==='logout'){try{await api('/tree/logout',{method:'POST'})}catch(_){}A=null;saveA();D={since:0,persons:{},rels:{}};saveD();authView='login';render()}
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&modal.open)closeModal()});
 /* ---------- start ---------- */
 render();if(A)sync();
+
+/* =================== CIJELO STABLO (automatski raspored) =================== */
+const TW=88,TH=150,PG=16,UG=30;
+function layout(){
+  const L=Object.values(D.persons).filter(p=>!p.deleted),ids=new Set(L.map(p=>p.id)),by=Object.fromEntries(L.map(p=>[p.id,p]));
+  const par=p=>[p.father,p.mother].filter(x=>x&&ids.has(x));
+  const R=rels().filter(r=>ids.has(r.a)&&ids.has(r.b));
+  const pmap={};R.forEach(r=>{(pmap[r.a]=pmap[r.a]||[]).push(r.b);(pmap[r.b]=pmap[r.b]||[]).push(r.a)});
+  const g={};L.forEach(p=>g[p.id]=0);
+  for(let it=0;it<60;it++){let ch=false;const set=(id,v)=>{if(g[id]!==v){g[id]=v;ch=true}};
+    L.forEach(p=>{const ps=par(p);if(ps.length){const v=Math.max(...ps.map(x=>g[x]))+1;if(g[p.id]<v)set(p.id,v)}});
+    R.forEach(r=>{const v=Math.max(g[r.a],g[r.b]);if(g[r.a]<v&&!par(by[r.a]).length)set(r.a,v);if(g[r.b]<v&&!par(by[r.b]).length)set(r.b,v)});
+    L.forEach(p=>{par(p).forEach(x=>{if(!par(by[x]).length&&g[x]<g[p.id]-1)set(x,g[p.id]-1)})});
+    R.forEach(r=>{[r.a,r.b].forEach(x=>{if(!par(by[x]).length)(pmap[x]||[]).forEach(y=>{})})});
+    if(!ch)break}
+  const maxG=Math.max(0,...L.map(p=>g[p.id]));
+  /* jedinice: povezane parove u istom koljenu */
+  const seen=new Set(),rows=[];for(let k=0;k<=maxG;k++)rows.push([]);
+  L.sort((a,b)=>String(a.born||'9').localeCompare(String(b.born||'9'))).forEach(p=>{if(seen.has(p.id))return;const comp=[],st=[p.id];
+    while(st.length){const x=st.pop();if(seen.has(x))continue;seen.add(x);comp.push(x);(pmap[x]||[]).forEach(y=>{if(g[y]===g[x]&&!seen.has(y))st.push(y)})}
+    if(comp.length>2){const hub=comp.slice().sort((a,b)=>(pmap[b]||[]).length-(pmap[a]||[]).length)[0];const rest=comp.filter(x=>x!==hub);comp.length=0;comp.push(rest[0],hub,...rest.slice(1))}
+    rows[g[p.id]].push({m:comp,x:0})});
+  const X={};const uw=u=>u.m.length*TW+(u.m.length-1)*PG;
+  const place=(row,key)=>{row.forEach(u=>u.k=key(u));row.sort((a,b)=>a.k-b.k);let right=-1e9;
+    row.forEach(u=>{const w=uw(u);let x=u.k-w/2;if(x<right+UG)x=right+UG;u.x=x;right=x+w;u.m.forEach((id,i)=>X[id]=x+i*(TW+PG)+TW/2)});
+    const sh=row.length?(row.reduce((s,u)=>s+u.k,0)-row.reduce((s,u)=>s+u.x+uw(u)/2,0))/row.length:0;row.forEach(u=>{u.x+=sh;u.m.forEach(id=>X[id]+=sh)})};
+  const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:null;
+  rows.forEach(row=>{let x=0;row.forEach(u=>{u.k=x;x+=uw(u)+UG});place(row,u=>u.k+uw(u)/2)});
+  const kids=id=>L.filter(c=>c.father===id||c.mother===id).map(c=>c.id);
+  const orderMembers=u=>{if(u.m.length!==2)return;const [a,b]=u.m;const pa=avg(par(by[a]).map(x=>X[x])),pb=avg(par(by[b]).map(x=>X[x]));
+    if(pa!=null&&pb!=null){if(pa>pb)u.m.reverse()}else if(pb!=null&&pa==null){if(pb<X[a])u.m.reverse()}else if(pa!=null&&pb==null){if(pa>X[b])u.m.reverse()}};
+  for(let it=0;it<8;it++){
+    for(let k=1;k<=maxG;k++){rows[k].forEach(orderMembers);place(rows[k],u=>{const v=avg(u.m.flatMap(id=>par(by[id]).map(x=>X[x])));return v!=null?v:u.x+uw(u)/2})}
+    for(let k=maxG-1;k>=0;k--)place(rows[k],u=>{const v=avg(u.m.flatMap(id=>kids(id).map(x=>X[x])));return v!=null?v:u.x+uw(u)/2})}
+  for(let k=1;k<=maxG;k++)place(rows[k],u=>{const v=avg(u.m.flatMap(id=>par(by[id]).map(x=>X[x])));return v!=null?v:u.x+uw(u)/2});
+  const minX=Math.min(...Object.values(X))-TW/2-20;Object.keys(X).forEach(k=>X[k]-=minX);
+  const W=Math.max(...Object.values(X))+TW/2+20,H=(maxG+1)*TH+30;
+  return {by,g,X,rows,R,W,H,maxG,par,kids}}
+let TV={s:.8,x:0,y:0,init:false};
+function vTree(){const all=Object.values(D.persons).filter(p=>!p.deleted);if(!all.length)return vHome();
+  const Ly=layout();TREE=Ly;const Y=id=>Ly.g[id]*TH+20;
+  let svg='';Ly.R.forEach(r=>{if(Ly.g[r.a]!==Ly.g[r.b])return;const x1=Math.min(Ly.X[r.a],Ly.X[r.b])+TW/2-6,x2=Math.max(Ly.X[r.a],Ly.X[r.b])-TW/2+6,y=Y(r.a)+34;
+    svg+='<path d="M'+x1+' '+y+'H'+x2+'" class="tl"/><path d="M'+((x1+x2)/2)+' '+(y-5)+'l5 5-5 5-5-5z" class="tk"/>'});
+  const fam={};all.forEach(c=>{const ps=Ly.par(c);if(!ps.length)return;const key=ps.slice().sort().join('|');(fam[key]=fam[key]||{ps,c:[]}).c.push(c.id)});
+  Object.values(fam).forEach(f=>{const px=f.ps.reduce((s,id)=>s+Ly.X[id],0)/f.ps.length,py=Math.max(...f.ps.map(id=>Y(id)))+(f.ps.length===2?34:72);
+    const top=Math.min(...f.c.map(id=>Y(id)))-14;svg+='<path d="M'+px+' '+py+'V'+top+'" class="tl"/>';
+    const xs=f.c.map(id=>Ly.X[id]);svg+='<path d="M'+Math.min(px,...xs)+' '+top+'H'+Math.max(px,...xs)+'" class="tl"/>';
+    f.c.forEach(id=>svg+='<path d="M'+Ly.X[id]+' '+top+'V'+(Y(id)+2)+'" class="tl"/>')});
+  const nodes=all.map(p=>'<button class="tn'+(p.id===ME?' me':'')+'" data-go="'+p.id+'" style="left:'+(Ly.X[p.id]-TW/2)+'px;top:'+Y(p.id)+'px">'+ph(p,'sm2')+'<span class="nm">'+esc(nameOf(p))+'</span><span class="yr">'+esc(years(p))+'</span></button>').join('');
+  return '<div class="tbar"><button class="btn small" data-a="tz" data-v="-">−</button><button class="btn small" data-a="tz" data-v="fit">Cijelo</button><button class="btn small" data-a="tz" data-v="+">+</button>'+(ME&&P(ME)?'<button class="btn small" data-a="tz" data-v="me">Ja</button>':'')+'</div>'
+    +'<div class="tview" id="tview"><div class="tcanvas" id="tcanvas" style="width:'+Ly.W+'px;height:'+Ly.H+'px"><svg class="tsvg" width="'+Ly.W+'" height="'+Ly.H+'">'+svg+'</svg>'+nodes+'</div></div>'}
+let TREE=null;
+function tApply(){const c=$('#tcanvas');if(c)c.style.transform='translate('+TV.x+'px,'+TV.y+'px) scale('+TV.s+')'}
+function tCenter(id,s){const v=$('#tview');if(!v||!TREE)return;TV.s=s||TV.s;TV.x=v.clientWidth/2-TREE.X[id]*TV.s;TV.y=v.clientHeight/2-(TREE.g[id]*TH+70)*TV.s;tApply()}
+function tFit(){const v=$('#tview');if(!v||!TREE)return;TV.s=Math.min(1,Math.max(.15,Math.min(v.clientWidth/TREE.W,v.clientHeight/TREE.H)));TV.x=(v.clientWidth-TREE.W*TV.s)/2;TV.y=Math.max(10,(v.clientHeight-TREE.H*TV.s)/3);tApply()}
+function tZoom(f,cx,cy){const v=$('#tview');if(!v)return;const r=v.getBoundingClientRect();cx=cx==null?r.width/2:cx-r.left;cy=cy==null?r.height/2:cy-r.top;
+  const ns=Math.min(2.2,Math.max(.15,TV.s*f));TV.x=cx-(cx-TV.x)*ns/TV.s;TV.y=cy-(cy-TV.y)*ns/TV.s;TV.s=ns;tApply()}
+function tAfterRender(){const v=$('#tview');if(!v)return;
+  const focus=(location.hash.match(/stablo\?o=([\w-]+)/)||[])[1];
+  if(focus&&TREE.X[focus]!=null)tCenter(focus,.9);else if(!TV.init){if(ME&&TREE.X[ME]!=null)tCenter(ME,.75);else tFit();TV.init=true}else tApply();
+  const pts=new Map();let moved=0,last=null,pinch=null;
+  v.addEventListener('pointerdown',e=>{v.setPointerCapture(e.pointerId);pts.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=0;if(pts.size===2){const [a,b]=[...pts.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y)}}});
+  v.addEventListener('pointermove',e=>{if(!pts.has(e.pointerId))return;const p=pts.get(e.pointerId),dx=e.clientX-p.x,dy=e.clientY-p.y;
+    if(pts.size===1){TV.x+=dx;TV.y+=dy;moved+=Math.abs(dx)+Math.abs(dy);tApply()}
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size===2&&pinch){const [a,b]=[...pts.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);if(d>0){tZoom(d/pinch.d,(a.x+b.x)/2,(a.y+b.y)/2);pinch.d=d;moved+=10}}});
+  const up=e=>{pts.delete(e.pointerId);if(pts.size<2)pinch=null;if(!pts.size&&moved<8){const t=document.elementFromPoint(e.clientX,e.clientY);const n=t&&t.closest('.tn');if(n)location.hash='#/o/'+n.dataset.go}};
+  v.addEventListener('pointerup',up);v.addEventListener('pointercancel',e=>{pts.delete(e.pointerId);pinch=null});
+  v.addEventListener('wheel',e=>{e.preventDefault();tZoom(e.deltaY<0?1.12:1/1.12,e.clientX,e.clientY)},{passive:false});
+  v.addEventListener('click',e=>{if(e.target.closest('.tn')){e.preventDefault();e.stopPropagation()}},true)}
+
+/* =================== OBITELJSKA KNJIGA =================== */
+const ROM=['I','II','III','IV','V','VI','VII','VIII','IX','X'];
+function relText(p){const out=[],fa=P(p.father),mo=P(p.mother),z=p.sex==='z';
+  if(fa||mo)out.push((z?'Kći':p.sex==='m'?'Sin':'Dijete')+' '+[fa,mo].filter(Boolean).map(x=>'<a href="#/knjiga?o='+x.id+'">'+esc(nameOf(x))+'</a>').join(' i '));
+  const pa=partnersOf(p.id);if(pa.length)out.push((pa[0].rel.kind==='partner'?(z?'Partnerica od':'Partner od'):(z?'Supruga':'Suprug')+' od')+' '+pa.map(x=>'<a href="#/knjiga?o='+x.p.id+'">'+esc(nameOf(x.p))+'</a>').join(', '));
+  const ch=childrenOf(p.id);if(ch.length)out.push((ch.length===1?'Dijete: ':'Djeca: ')+ch.map(c=>'<a href="#/knjiga?o='+c.id+'">'+esc(nameOf(c))+'</a>').join(', '));
+  return out}
+function vBook(){const all=Object.values(D.persons).filter(p=>!p.deleted);if(!all.length)return vHome();
+  const Ly=layout();const L=all.slice().sort((a,b)=>Ly.g[a.id]-Ly.g[b.id]||Ly.X[a.id]-Ly.X[b.id]);BOOK=L.map(p=>p.id);
+  const gens=[...new Set(L.map(p=>Ly.g[p.id]))];
+  return '<div class="bgen">'+gens.map(k=>'<button class="btn small" data-a="bgen" data-v="'+k+'">'+ROM[k]+'. koljeno</button>').join('')+'</div>'
+    +'<div class="book" id="book">'+L.map((p,i)=>{const rt=relText(p);const born=[fmtDate(p.born),esc(p.bornPlace||'')].filter(Boolean).join(', '),died=[fmtDate(p.died),esc(p.diedPlace||'')].filter(Boolean).join(', ');
+      return '<article class="page" id="bk-'+p.id+'" data-gen="'+Ly.g[p.id]+'"><div class="eyebrow">'+ROM[Ly.g[p.id]]+'. koljeno · '+(i+1)+' / '+L.length+'</div>'
+      +'<div class="bph">'+(p.photo?'<img src="'+photoUrl(p.photo)+'" alt="" loading="lazy" crossorigin="anonymous">':'<span>'+esc(ini(p))+'</span>')+'</div>'
+      +'<h2>'+esc(nameOf(p))+'</h2>'+(p.birthName?'<p class="hint">rođ. '+esc(p.birthName)+'</p>':'')
+      +'<p class="life">'+(born?'✶ '+born:'')+(died?'<br>✝ '+died:'')+(p.place&&!p.died?'<br>Živi u: '+esc(p.place):'')+'</p>'
+      +(rt.length?'<p class="rel">'+rt.join('<br>')+'</p>':'')+(p.story?'<div class="story">'+esc(p.story)+'</div>':'')
+      +'<div class="btns"><a class="btn small" href="#/o/'+p.id+'">Detalji</a><a class="btn small" href="#/stablo?o='+p.id+'">U stablu</a></div></article>'}).join('')+'</div>'
+    +'<div class="bnav"><button class="btn" data-a="bstep" data-v="-1" aria-label="Prethodna">‹</button><button class="btn" data-a="bstep" data-v="1" aria-label="Sljedeća">›</button></div>'}
+let BOOK=[];
+function bAfterRender(){const b=$('#book');if(!b)return;const o=(location.hash.match(/knjiga\?o=([\w-]+)/)||[])[1];
+  const t=o&&document.getElementById('bk-'+o);if(t)b.scrollLeft=t.offsetLeft-b.offsetLeft;else if(bAfterRender.pos)b.scrollLeft=bAfterRender.pos;
+  const mark=()=>{const i=Math.round(b.scrollLeft/Math.max(1,b.clientWidth)),pg=b.children[i];if(!pg)return;const g=pg.dataset.gen;document.querySelectorAll('[data-a=bgen]').forEach(x=>{const on=x.dataset.v===g;x.classList.toggle('on',on);if(on&&x.scrollIntoView)x.parentNode.scrollLeft=x.offsetLeft-x.parentNode.offsetLeft-40})};
+  let tm;b.addEventListener('scroll',()=>{bAfterRender.pos=b.scrollLeft;clearTimeout(tm);tm=setTimeout(mark,80)},{passive:true});mark()}
