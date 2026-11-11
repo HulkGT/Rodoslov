@@ -107,3 +107,8 @@ body.treemode main.wrap{max-width:none;padding:0}
 .page .story{text-align:left;margin-top:10px;line-height:1.6}
 .page .btns{justify-content:center}
 .bnav{display:flex;justify-content:space-between;gap:10px;margin:4px 0 12px}.bnav .btn{flex:1;font-size:1.3rem}
+.choose{display:grid;gap:8px;margin:10px 0}.choose .btn{width:100%;justify-content:flex-start;text-align:left}
+.node.add.plus .ph{font-size:1.6rem}
+.center .node.add.plus{width:auto;min-width:0;padding:0;align-self:center}
+.center .node.add.plus .ph{width:48px;height:48px;border-radius:50%;font-size:1.5rem;display:grid;place-items:center}
+.center .node.add.plus .nm{font-size:.62rem}

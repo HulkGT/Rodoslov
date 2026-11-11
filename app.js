@@ -7,7 +7,11 @@ let A=null;try{A=JSON.parse(localStorage.getItem('rod-auth')||'null')}catch(e){}
 const saveA=()=>{try{A?localStorage.setItem('rod-auth',JSON.stringify(A)):localStorage.removeItem('rod-auth')}catch(e){}};
 let D={since:0,persons:{},rels:{}};try{const x=JSON.parse(localStorage.getItem('rod-data')||'null');if(x&&x.persons)D=x}catch(e){}
 const saveD=()=>{try{localStorage.setItem('rod-data',JSON.stringify(D))}catch(e){}};
-let ME=null;try{ME=localStorage.getItem('rod-me')}catch(e){}
+let ME=null;
+const meKey=()=>'rod-me:'+((A&&A.user&&(A.user.email||A.user.id))||'');
+function loadMe(){ME=null;try{const v=localStorage.getItem(meKey());ME=v&&v!=='-'?v:null}catch(e){}}
+function setMe(v){try{localStorage.setItem(meKey(),v||'-');localStorage.removeItem('rod-me')}catch(e){}ME=v&&v!=='-'?v:null}
+const meAsked=()=>{try{return localStorage.getItem(meKey())!==null}catch(e){return true}};
 const isAdmin=()=>!!(A&&A.user&&A.user.admin);
 let syncing=false,lastSync=0;
 
@@ -48,7 +52,8 @@ const canEdit=p=>!p.locked||isAdmin();
 async function sync(force){if(!A||syncing)return;syncing=true;
   try{const j=await api('/tree/data?since='+(force?0:D.since||0));if(force){D.persons={};D.rels={}}
     (j.persons||[]).forEach(p=>D.persons[p.id]=p);(j.rels||[]).forEach(r=>D.rels[r.id]=r);D.since=j.now;saveD();lastSync=Date.now();
-    if((j.persons||[]).length||(j.rels||[]).length||force)render(true)}
+    if((j.persons||[]).length||(j.rels||[]).length||force)render(true);
+    askMeSoon()}
   catch(e){if(e.code==='NETWORK')setSyncLabel('izvan mreže')}finally{syncing=false}}
 function setSyncLabel(t){const el=$('#sync');if(el)el.textContent=t}
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)sync()});
@@ -65,7 +70,7 @@ function render(keep){if(!A){renderAuth();return}if(keep)scrollKeep=window.scrol
   let body='';try{body=r.v==='osoba'?vPerson(r.id):r.v==='osobe'?vList():r.v==='admin'?vAdmin():r.v==='vise'?vMore():r.v==='stablo'?vTree():r.v==='knjiga'?vBook():vHome()}catch(e){body='<p class="neg">'+esc(e.message)+'</p>'}
   $('#root').innerHTML='<header class="top"><span class="mark" aria-hidden="true">R</span><span class="brand"><b>'+esc(window.ROD_NASLOV||'Rodoslov')+'</b><small>'+esc(window.ROD_PODNASLOV||'')+'</small></span><span class="sync" id="sync"></span></header><main class="wrap">'+body+'</main>'
     +'<nav class="bar">'+tabs.map(t=>'<a href="'+t[0]+'"'+(cur===t[3]?' class="on"':'')+'><svg viewBox="0 0 24 24">'+ICON[t[1]]+'</svg>'+t[2]+'</a>').join('')+'</nav>';
-  document.body.classList.toggle('treemode',r.v==='stablo');if(r.v==='stablo')tAfterRender();if(r.v==='knjiga')bAfterRender();
+  document.body.classList.toggle('treemode',r.v==='stablo');if(r.v==='stablo')tAfterRender();if(r.v==='knjiga')bAfterRender();askMeSoon();
   if(keep)window.scrollTo(0,scrollKeep);
   if(r.v==='admin'){if(keep&&AD.log)fillAdmin();else loadAdmin()}}
 /* ---------- prijava ---------- */
@@ -85,7 +90,7 @@ document.addEventListener('submit',async e=>{const f=e.target.closest('form[data
     if(f.dataset.f==='login')j=await api('/tree/login',{method:'POST',body:{email,auth}});
     else if(f.dataset.f==='reg')j=await api('/tree/register',{method:'POST',body:{email,auth,name:$('#f-name').value.trim(),invite:INVITE}});
     else j=await api('/tree/reset',{method:'POST',body:{email,auth,code:$('#f-code').value}});
-    A={token:j.token,user:j.user};saveA();if(INVITE){try{history.replaceState(null,'',location.pathname+'#/')}catch(_){}}
+    A={token:j.token,user:j.user};saveA();loadMe();if(INVITE){try{history.replaceState(null,'',location.pathname+'#/')}catch(_){}}
     D={since:0,persons:{},rels:{}};render();await sync(true);toast('Dobro došao, '+j.user.name.split(' ')[0]+'!')}
   catch(x){toast(err(x));b.disabled=false;b.textContent=old}});
 /* ---------- početna ---------- */
@@ -104,6 +109,7 @@ function vHome(){const all=Object.values(D.persons).filter(p=>!p.deleted);const 
 document.addEventListener('input',e=>{if(e.target.id==='q'){const q=nrm(e.target.value).trim();const el=$('#qres');if(!el)return;
   if(!q){el.innerHTML='';return}const L=Object.values(D.persons).filter(p=>!p.deleted&&nrm(nameOf(p)+' '+(p.birthName||'')+' '+(p.place||'')+' '+(p.bornPlace||'')).includes(q)).slice(0,20);
   el.innerHTML='<div class="card">'+(L.length?L.map(row).join(''):'<p class="hint">Nitko nije pronađen.</p>')+'</div>'}
+  if(e.target.id==='q3'){const q=nrm(e.target.value).trim();document.querySelectorAll('#melist [data-n]').forEach(b=>{b.hidden=q&&!nrm(b.dataset.n).includes(q)})}
   if(e.target.id==='q2'){const q=nrm(e.target.value).trim();document.querySelectorAll('[data-pick]').forEach(b=>{b.hidden=q&&!nrm(b.dataset.n).includes(q)})}});
 const row=p=>'<button class="prow" data-go="'+p.id+'">'+ph(p,'sm')+'<span><span class="nm">'+esc(nameOf(p))+'</span>'+(p.locked?' <span class="lock" title="Zaključano">🔒</span>':'')+'<br><span class="yr">'+esc(years(p))+(p.birthName?' · rođ. '+esc(p.birthName):'')+'</span></span></button>';
 /* ---------- popis ---------- */
@@ -120,10 +126,10 @@ const node=(p,cls)=>'<button class="node" data-go="'+p.id+'">'+ph(p,cls)+'<span 
 const addNode=(a,label,id)=>'<button class="node add" data-a="'+a+'" data-id="'+id+'"><span class="ph">+</span><span class="nm">'+label+'</span></button>';
 function vPerson(id){const p=P(id);if(!p)return '<p class="empty">Osoba nije pronađena.</p><div class="btns"><a class="btn" href="#/osobe">Sve osobe</a></div>';
   const fa=P(p.father),mo=P(p.mother),pa=partnersOf(id),ch=childrenOf(id),sib=siblingsOf(p),ed=canEdit(p);
-  let h='<div class="focus"><div class="lvl-t">Roditelji</div><div class="lvl">'+(fa?node(fa):ed?addNode('addParent','Otac',id+':m'):'')+(mo?node(mo):ed?addNode('addParent','Majka',id+':z'):'')+(!fa&&!mo&&!ed?'<span class="hint">nepoznati</span>':'')+'</div><div class="vline"></div>'
+  let h='<div class="focus">'+(fa||mo?'<div class="lvl-t">Roditelji</div><div class="lvl">'+(fa?node(fa):'')+(mo?node(mo):'')+'</div><div class="vline"></div>':'')
     +'<div class="center"><div class="me">'+ph(p,'big')+'<div><div class="nm">'+esc(nameOf(p))+'</div>'+(p.birthName?'<div class="hint">rođ. '+esc(p.birthName)+'</div>':'')+'<div class="yr">'+esc(years(p))+'</div>'+(p.locked?'<div class="lock">🔒 zaključano</div>':'')+'</div></div>'
-    +pa.map(x=>'<span class="knot" title="'+(x.rel.kind==='partner'?'partner':'brak')+'">✦</span>'+node(x.p)).join('')+(ed&&!pa.length?addNode('addPartner','Partner',id):'')+'</div>'+(ed&&pa.length?'<button class="link" data-a="addPartner" data-id="'+id+'">+ još jedan partner</button>':'')
-    +'<div class="vline"></div><div class="lvl-t">Djeca</div><div class="lvl">'+ch.map(c=>node(c)).join('')+addNode('addChild','Dijete',id)+'</div>'
+    +pa.map(x=>'<span class="knot" title="'+(x.rel.kind==='partner'?'partner':'brak')+'">✦</span>'+node(x.p)).join('')+(A?'<button class="node add plus" data-a="addAny" data-id="'+id+'" aria-label="Dodaj člana obitelji"><span class="ph">+</span><span class="nm">Dodaj</span></button>':'')+'</div>'
+    +(ch.length?'<div class="vline"></div><div class="lvl-t">Djeca</div><div class="lvl">'+ch.map(c=>node(c)).join('')+'</div>':'')
     +(sib.length?'<div class="lvl-t">Braća i sestre</div><div class="sib">'+sib.map(s=>'<button class="chip" data-go="'+s.id+'">'+ph(s,'sm')+esc(nameOf(s))+'</button>').join('')+'</div>':'')+'</div>';
   const F=[['Rođen'+(p.sex==='z'?'a':''),[fmtDate(p.born),esc(p.bornPlace||'')].filter(Boolean).join(', ')],['Umro'+(p.sex==='z'?'la':''),[fmtDate(p.died),esc(p.diedPlace||'')].filter(Boolean).join(', ')],['Živi u',esc(p.place||'')],['Zanimanje',esc(p.job||'')],
     ['Telefon',p.phone?'<a href="tel:'+esc(p.phone.replace(/[^\d+]/g,''))+'">'+esc(p.phone)+'</a> · <a href="https://wa.me/'+esc(p.phone.replace(/\D/g,'').replace(/^00/,''))+'" target="_blank" rel="noopener">WhatsApp</a>':''],['E-pošta',p.email?'<a href="mailto:'+esc(p.email)+'">'+esc(p.email)+'</a>':''],['Adresa',esc(p.address||'')]].filter(x=>x[1]);
@@ -132,7 +138,7 @@ function vPerson(id){const p=P(id);if(!p)return '<p class="empty">Osoba nije pro
     +'<div class="meta">'+(p.by?'Zadnja promjena: '+esc(p.by)+', '+new Date(p.updated).toLocaleDateString('hr-HR'):'')+'</div></div>'
     +'<div class="btns">'+(ed?'<button class="btn primary" data-a="edit" data-id="'+id+'">Uredi</button><button class="btn" data-a="photo" data-id="'+id+'">Fotografija</button>':'<span class="hint">🔒 Ovu osobu može mijenjati samo administrator.</span>')
     +(isAdmin()?'<button class="btn" data-a="lock" data-id="'+id+'">'+(p.locked?'Otključaj':'Zaključaj')+'</button><button class="btn danger" data-a="del" data-id="'+id+'">Obriši</button>':'')
-    +'<a class="btn small" href="#/stablo?o='+id+'">Cijelo stablo</a><a class="btn small" href="#/knjiga?o='+id+'">U knjizi</a>'+(ME===id?'':'<button class="btn small" data-a="me" data-id="'+id+'">Ovo sam ja</button>')+'</div>'
+    +'<a class="btn small" href="#/stablo?o='+id+'">Cijelo stablo</a><a class="btn small" href="#/knjiga?o='+id+'">U knjizi</a>'+'</div>'
     +(pa.length&&ed?'<p class="hint">'+pa.map(x=>'<button class="link" data-a="unrel" data-id="'+x.rel.id+'">Ukloni vezu s '+esc(nameOf(x.p))+'</button>').join(' · ')+'</p>':'');
   return h}
 /* ---------- uređivanje ---------- */
@@ -163,17 +169,35 @@ document.addEventListener('submit',async e=>{const f=e.target.closest('form[data
     closeModal();await sync();toast('Spremljeno.')}
   catch(x){toast(err(x));btn.disabled=false;if(x.code==='CONFLICT'){closeModal();sync()}}});
 const pick=p=>{const o={};FIELDS.concat(['photo']).forEach(k=>{if(p[k])o[k]=p[k]});return o};
+function askMeSoon(){if(!A||meAsked()||!Object.values(D.persons).some(p=>!p.deleted))return;clearTimeout(askMeSoon.t);askMeSoon.t=setTimeout(()=>{if(A&&!meAsked()&&$('#modal').hidden&&!/admin/.test(location.hash))whoAmI(true)},600)}
+function whoAmI(first){const un=nrm(A&&A.user?A.user.name:'').split(/\s+/).filter(w=>w.length>1);
+  const all=Object.values(D.persons).filter(x=>!x.deleted);const sc=x=>{const n=nrm(nameOf(x)+' '+(x.birthName||''));return un.filter(w=>n.includes(w)).length};
+  const L=all.map(x=>[sc(x),x]).sort((a,b)=>b[0]-a[0]||nrm(nameOf(a[1])).localeCompare(nrm(nameOf(b[1])))).map(z=>z[1]);const best=L.filter(x=>sc(x)>=Math.min(2,un.length)&&un.length);
+  const row=c=>'<button class="prow" data-a="me" data-id="'+c.id+'" data-n="'+esc(nameOf(c))+'">'+ph(c,'sm')+'<span><span class="nm">'+esc(nameOf(c))+'</span><br><span class="yr">'+esc(years(c))+'</span></span></button>';
+  modal('<div class="mhead"><h3>'+(best.length===1?'Jesi li ovo ti?':'Tko si ti u stablu?')+'</h3>'+(first?'':'<button class="x" data-a="close" aria-label="Zatvori">×</button>')+'</div>'
+    +'<p class="hint">Tako se stablo i knjiga otvaraju kod tebe, a koljena se broje od tebe. Možeš promijeniti u izborniku Više.</p>'
+    +(best.length?'<div>'+best.map(row).join('')+'</div><h3>ili netko drugi</h3>':'')
+    +'<input class="search" id="q3" type="search" placeholder="Traži svoje ime …"><div id="melist">'+L.filter(x=>!best.includes(x)).map(row).join('')+'</div>'
+    +'<div class="btns"><button class="btn" data-a="notme">Nisam u stablu</button></div>')}
+function addAny(id){const p=P(id);const opts=[],ed=canEdit(p);
+  if(ed&&!p.father)opts.push(['addParent',id+':m','Otac']);if(ed&&!p.mother)opts.push(['addParent',id+':z','Majka']);
+  if(ed)opts.push(['addPartner',id,'Partner / supružnik']);opts.push(['addChild',id,'Dijete']);if(p.father||p.mother)opts.push(['addSib',id,'Brat / sestra']);
+  modal('<div class="mhead"><h3>Dodaj</h3><button class="x" data-a="close" aria-label="Zatvori">×</button></div><p class="hint">'+esc(nameOf(p))+' – koga dodaješ?</p><div class="choose">'
+    +opts.map(o=>'<button class="btn" data-a="'+o[0]+'" data-id="'+esc(o[1])+'">'+o[2]+'</button>').join('')+'</div>'
+    +(p.father||p.mother?'':'<p class="hint">Brata ili sestru možeš dodati kad su upisani roditelji.</p>'))}
 function addDialog(kind,id){const p=P(id);const sx=kind==='parent'?id.split(':')[1]:'';const pid=kind==='parent'?id.split(':')[0]:id;const base=P(pid);
-  const title=kind==='parent'?(sx==='m'?'Dodaj oca':'Dodaj majku'):kind==='partner'?'Dodaj partnera':'Dodaj dijete';
+  const title=kind==='parent'?(sx==='m'?'Dodaj oca':'Dodaj majku'):kind==='partner'?'Dodaj partnera':kind==='sib'?'Dodaj brata ili sestru':'Dodaj dijete';
   const cands=Object.values(D.persons).filter(x=>!x.deleted&&x.id!==pid&&(kind!=='parent'||!x.sex||x.sex===sx)).sort((a,b)=>nrm(nameOf(a)).localeCompare(nrm(nameOf(b))));
   modal('<div class="mhead"><h3>'+title+'</h3><button class="x" data-a="close">×</button></div><p class="hint">'+esc(nameOf(base))+'</p><div class="btns"><button class="btn primary" data-a="addNew" data-k="'+kind+'" data-id="'+esc(id)+'">Nova osoba</button></div><h3>ili postojeća osoba</h3><input class="search" id="q2" type="search" placeholder="Traži …"><div>'
     +cands.map(c=>'<button class="prow" data-pick="'+c.id+'" data-n="'+esc(nameOf(c))+'" data-k="'+kind+'" data-id="'+esc(id)+'">'+ph(c,'sm')+'<span><span class="nm">'+esc(nameOf(c))+'</span><br><span class="yr">'+esc(years(c))+'</span></span></button>').join('')+'</div>')}
 async function linkExisting(kind,id,other){try{
   if(kind==='partner')await api('/tree/rel',{method:'POST',body:{a:id,b:other,kind:'brak'}});
+  else if(kind==='sib'){const c=P(other),base=P(id);const b=Object.assign({},c);if(base.father)b.father=base.father;if(base.mother)b.mother=base.mother;await api('/tree/person/'+other,{method:'PUT',body:{ver:c.ver,person:pick(b)}})}
   else if(kind==='child'){const c=P(other),base=P(id);const b=Object.assign({},c);if(base.sex==='z')b.mother=id;else b.father=id;await api('/tree/person/'+other,{method:'PUT',body:{ver:c.ver,person:pick(b)}})}
   else{const [cid,sx]=id.split(':');const c=P(cid);const b=Object.assign({},c);b[sx==='z'?'mother':'father']=other;await api('/tree/person/'+cid,{method:'PUT',body:{ver:c.ver,person:pick(b)}})}
   closeModal();await sync();toast('Povezano.')}catch(x){toast(err(x))}}
 function newFor(kind,id){if(kind==='child'){const base=P(id);const pr=partnersOf(id).map(x=>x.p);const o={last:base.last};if(base.sex==='z'){o.mother=id;if(pr.length===1&&pr[0].sex!=='z')o.father=pr[0].id;o.last=pr.length===1?pr[0].last:base.last}else{o.father=id;if(pr.length===1&&pr[0].sex!=='m')o.mother=pr[0].id}personForm(o,'Novo dijete')}
+  else if(kind==='sib'){const base=P(id);personForm({father:base.father||'',mother:base.mother||'',last:base.father&&P(base.father)?P(base.father).last:base.last},'Novi brat / sestra')}
   else if(kind==='partner'){const base=P(id);personForm({sex:base.sex==='m'?'z':base.sex==='z'?'m':''},'Novi partner','partner:'+id)}
   else{const [cid,sx]=id.split(':');const c=P(cid);personForm({sex:sx,last:sx==='m'?c.last:''},sx==='m'?'Novi otac':'Nova majka','parent:'+cid)}}
 /* ---------- fotografije ---------- */
@@ -205,10 +229,13 @@ async function doImport(){const i=document.createElement('input');i.type='file';
   try{const empty=!Object.values(D.persons).some(p=>!p.deleted);
     if(empty&&Array.isArray(j.persons)){toast('Uvoz osoba …');for(let k=0;k<j.persons.length;k+=20)await api('/tree/admin/seed',{method:'POST',body:{first:k===0,persons:j.persons.slice(k,k+20)}});
       for(let k=0;k<(j.rels||[]).length;k+=20)await api('/tree/admin/seed',{method:'POST',body:{rels:j.rels.slice(k,k+20)}});await sync()}
+    if(Array.isArray(j.update)){let n=0;for(const u of j.update){const c=P(u.id);if(!c)continue;const b=Object.assign({},c);['first','last','birthName','sex','born','died','place'].forEach(k=>{if(u[k]!=null)b[k]=u[k]});
+        toast('Ispravci '+(++n)+' / '+j.update.length+' …');await api('/tree/person/'+u.id,{method:'PUT',body:{ver:c.ver,person:pick(b)}})}await sync()}
+    if(Array.isArray(j.relKind))for(const u of j.relKind){const r=Object.values(D.rels).find(r=>!r.deleted&&((r.a===u.a&&r.b===u.b)||(r.a===u.b&&r.b===u.a)));if(r&&r.kind!==u.kind){await api('/tree/rel/'+r.id,{method:'DELETE'});await api('/tree/rel',{method:'POST',body:{a:u.a,b:u.b,kind:u.kind}})}}
     const phs=j.photos||[];let n=0;for(const x of phs){if(!P(x.personId)||(P(x.personId).photo&&!j.replacePhotos))continue;toast('Fotografije '+(++n)+' / '+phs.length+' …');await api('/tree/photo',{method:'POST',body:{personId:x.personId,data:x.data}})}
     await sync(true);toast('Uvoz gotov.');loadAdmin()}catch(e){toast(err(e))}};i.click()}
 /* ---------- više ---------- */
-function vMore(){return '<h2>Više</h2><div class="card"><div class="eyebrow">Moj račun</div><p><b>'+esc(A.user.name)+'</b><br><span class="hint">'+esc(A.user.email)+(isAdmin()?' · administrator':'')+'</span></p>'+(ME&&P(ME)?'<p class="hint">Ti si: '+esc(nameOf(P(ME)))+'</p>':'<p class="hint">Na svojoj kartici u stablu pritisni „Ovo sam ja“, tada se stablo otvara kod tebe.</p>')+'<div class="btns"><button class="btn" data-a="refresh">Osvježi podatke</button><button class="btn danger" data-a="logout">Odjava</button></div></div>'
+function vMore(){return '<h2>Više</h2><div class="card"><div class="eyebrow">Moj račun</div><p><b>'+esc(A.user.name)+'</b><br><span class="hint">'+esc(A.user.email)+(isAdmin()?' · administrator':'')+'</span></p>'+'<p class="hint">U stablu si: <b>'+(ME&&P(ME)?esc(nameOf(P(ME))):'nije odabrano')+'</b> · <button class="link" data-a="whoami">promijeni</button></p>'+'<div class="btns"><button class="btn" data-a="refresh">Osvježi podatke</button><button class="btn danger" data-a="logout">Odjava</button></div></div>'
   +'<div class="card"><div class="eyebrow">Pomoć</div><p class="hint">Zaboravljena lozinka? Administrator ti može dati kod za novu lozinku. Zaključane osobe (🔒) može mijenjati samo administrator.</p></div>'}
 /* ---------- klikovi ---------- */
 document.addEventListener('click',async e=>{const g=e.target.closest('[data-go]');if(g&&!e.target.closest('[data-a]')){location.hash='#/o/'+g.dataset.go;return}
@@ -221,9 +248,13 @@ document.addEventListener('click',async e=>{const g=e.target.closest('[data-go]'
   else if(a==='addParent')addDialog('parent',id);
   else if(a==='addPartner')addDialog('partner',id);
   else if(a==='addChild')addDialog('child',id);
+  else if(a==='addSib')addDialog('sib',id);
+  else if(a==='addAny')addAny(id);
+  else if(a==='whoami')whoAmI(false);
+  else if(a==='notme'){setMe('-');closeModal();render(true);toast('U redu.')}
   else if(a==='addNew'){newFor(b.dataset.k,id)}
   else if(a==='photo')pickPhoto(id);
-  else if(a==='me'){ME=id;try{localStorage.setItem('rod-me',id)}catch(_){}toast('Zapamćeno.');render(true)}
+  else if(a==='me'){setMe(id);closeModal();toast('Zapamćeno: '+nameOf(P(id)));render(true)}
   else if(a==='lock'){const p=P(id);try{await api('/tree/person/'+id+'/lock',{method:'POST',body:{locked:!p.locked}});await sync();toast(p.locked?'Otključano.':'Zaključano.')}catch(x){toast(err(x))}}
   else if(a==='del'){const p=P(id);if(!confirm('Obrisati osobu '+nameOf(p)+'? U povijesti promjena možeš je vratiti.'))return;try{await api('/tree/person/'+id,{method:'DELETE'});await sync();location.hash='#/osobe';toast('Obrisano.')}catch(x){toast(err(x))}}
   else if(a==='unrel'){if(!confirm('Ukloniti ovu vezu?'))return;try{await api('/tree/rel/'+id,{method:'DELETE'});await sync();toast('Veza uklonjena.')}catch(x){toast(err(x))}}
@@ -245,10 +276,10 @@ document.addEventListener('click',async e=>{const g=e.target.closest('[data-go]'
 });
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&modal.open)closeModal()});
 /* ---------- start ---------- */
-render();if(A)sync();
+// boot: am Dateiende
 
 /* =================== CIJELO STABLO (automatski raspored) =================== */
-const TW=88,TH=150,PG=16,UG=30;
+var TW=88,TH=150,PG=16,UG=30;
 function layout(){
   const L=Object.values(D.persons).filter(p=>!p.deleted),ids=new Set(L.map(p=>p.id)),by=Object.fromEntries(L.map(p=>[p.id,p]));
   const par=p=>[p.father,p.mother].filter(x=>x&&ids.has(x));
@@ -284,7 +315,7 @@ function layout(){
   const minX=Math.min(...Object.values(X))-TW/2-20;Object.keys(X).forEach(k=>X[k]-=minX);
   const W=Math.max(...Object.values(X))+TW/2+20,H=(maxG+1)*TH+30;
   return {by,g,X,rows,R,W,H,maxG,par,kids}}
-let TV={s:.8,x:0,y:0,init:false};
+var TV={s:.8,x:0,y:0,init:false};
 function vTree(){const all=Object.values(D.persons).filter(p=>!p.deleted);if(!all.length)return vHome();
   const Ly=layout();TREE=Ly;const Y=id=>Ly.g[id]*TH+20;
   let svg='';Ly.R.forEach(r=>{if(Ly.g[r.a]!==Ly.g[r.b])return;const x1=Math.min(Ly.X[r.a],Ly.X[r.b])+TW/2-6,x2=Math.max(Ly.X[r.a],Ly.X[r.b])-TW/2+6,y=Y(r.a)+34;
@@ -297,7 +328,7 @@ function vTree(){const all=Object.values(D.persons).filter(p=>!p.deleted);if(!al
   const nodes=all.map(p=>'<button class="tn'+(p.id===ME?' me':'')+'" data-go="'+p.id+'" style="left:'+(Ly.X[p.id]-TW/2)+'px;top:'+Y(p.id)+'px">'+ph(p,'sm2')+'<span class="nm">'+esc(nameOf(p))+'</span><span class="yr">'+esc(years(p))+'</span></button>').join('');
   return '<div class="tbar"><button class="btn small" data-a="tz" data-v="-">−</button><button class="btn small" data-a="tz" data-v="fit">Cijelo</button><button class="btn small" data-a="tz" data-v="+">+</button>'+(ME&&P(ME)?'<button class="btn small" data-a="tz" data-v="me">Ja</button>':'')+'</div>'
     +'<div class="tview" id="tview"><div class="tcanvas" id="tcanvas" style="width:'+Ly.W+'px;height:'+Ly.H+'px"><svg class="tsvg" width="'+Ly.W+'" height="'+Ly.H+'">'+svg+'</svg>'+nodes+'</div></div>'}
-let TREE=null;
+var TREE=null;
 function tApply(){const c=$('#tcanvas');if(c)c.style.transform='translate('+TV.x+'px,'+TV.y+'px) scale('+TV.s+')'}
 function tCenter(id,s){const v=$('#tview');if(!v||!TREE)return;TV.s=s||TV.s;TV.x=v.clientWidth/2-TREE.X[id]*TV.s;TV.y=v.clientHeight/2-(TREE.g[id]*TH+70)*TV.s;tApply()}
 function tFit(){const v=$('#tview');if(!v||!TREE)return;TV.s=Math.min(1,Math.max(.15,Math.min(v.clientWidth/TREE.W,v.clientHeight/TREE.H)));TV.x=(v.clientWidth-TREE.W*TV.s)/2;TV.y=Math.max(10,(v.clientHeight-TREE.H*TV.s)/3);tApply()}
@@ -318,7 +349,7 @@ function tAfterRender(){const v=$('#tview');if(!v)return;
   v.addEventListener('click',e=>{if(e.target.closest('.tn')){e.preventDefault();e.stopPropagation()}},true)}
 
 /* =================== OBITELJSKA KNJIGA =================== */
-const ROM=['I','II','III','IV','V','VI','VII','VIII','IX','X'];
+var ROM=['I','II','III','IV','V','VI','VII','VIII','IX','X'];
 function relText(p){const out=[],fa=P(p.father),mo=P(p.mother),z=p.sex==='z';
   if(fa||mo)out.push((z?'Kći':p.sex==='m'?'Sin':'Dijete')+' '+[fa,mo].filter(Boolean).map(x=>'<a href="#/knjiga?o='+x.id+'">'+esc(nameOf(x))+'</a>').join(' i '));
   const pa=partnersOf(p.id);if(pa.length)out.push((pa[0].rel.kind==='partner'?(z?'Partnerica od':'Partner od'):(z?'Supruga':'Suprug')+' od')+' '+pa.map(x=>'<a href="#/knjiga?o='+x.p.id+'">'+esc(nameOf(x.p))+'</a>').join(', '));
@@ -327,17 +358,26 @@ function relText(p){const out=[],fa=P(p.father),mo=P(p.mother),z=p.sex==='z';
 function vBook(){const all=Object.values(D.persons).filter(p=>!p.deleted);if(!all.length)return vHome();
   const Ly=layout();const L=all.slice().sort((a,b)=>Ly.g[a.id]-Ly.g[b.id]||Ly.X[a.id]-Ly.X[b.id]);BOOK=L.map(p=>p.id);
   const gens=[...new Set(L.map(p=>Ly.g[p.id]))];
-  return '<div class="bgen">'+gens.map(k=>'<button class="btn small" data-a="bgen" data-v="'+k+'">'+ROM[k]+'. koljeno</button>').join('')+'</div>'
+  return (ME&&P(ME)?'':'<p class="hint" style="margin:0 0 6px">Koljena se broje od tebe. <button class="link" data-a="whoami">Odaberi tko si u stablu</button>.</p>')
+    +'<div class="bgen">'+gens.map(k=>'<button class="btn small" data-a="bgen" data-v="'+k+'">'+genName(k,Ly)+'</button>').join('')+'</div>'
     +'<div class="book" id="book">'+L.map((p,i)=>{const rt=relText(p);const born=[fmtDate(p.born),esc(p.bornPlace||'')].filter(Boolean).join(', '),died=[fmtDate(p.died),esc(p.diedPlace||'')].filter(Boolean).join(', ');
-      return '<article class="page" id="bk-'+p.id+'" data-gen="'+Ly.g[p.id]+'"><div class="eyebrow">'+ROM[Ly.g[p.id]]+'. koljeno · '+(i+1)+' / '+L.length+'</div>'
+      return '<article class="page" id="bk-'+p.id+'" data-gen="'+Ly.g[p.id]+'"><div class="eyebrow">'+[genName(Ly.g[p.id],Ly),genYears(Ly.g[p.id],Ly)].filter(Boolean).join(' · ')+' · '+(i+1)+' / '+L.length+'</div>'
       +'<div class="bph">'+(p.photo?'<img src="'+photoUrl(p.photo)+'" alt="" loading="lazy" crossorigin="anonymous">':'<span>'+esc(ini(p))+'</span>')+'</div>'
       +'<h2>'+esc(nameOf(p))+'</h2>'+(p.birthName?'<p class="hint">rođ. '+esc(p.birthName)+'</p>':'')
       +'<p class="life">'+(born?'✶ '+born:'')+(died?'<br>✝ '+died:'')+(p.place&&!p.died?'<br>Živi u: '+esc(p.place):'')+'</p>'
       +(rt.length?'<p class="rel">'+rt.join('<br>')+'</p>':'')+(p.story?'<div class="story">'+esc(p.story)+'</div>':'')
       +'<div class="btns"><a class="btn small" href="#/o/'+p.id+'">Detalji</a><a class="btn small" href="#/stablo?o='+p.id+'">U stablu</a></div></article>'}).join('')+'</div>'
     +'<div class="bnav"><button class="btn" data-a="bstep" data-v="-1" aria-label="Prethodna">‹</button><button class="btn" data-a="bstep" data-v="1" aria-label="Sljedeća">›</button></div>'}
-let BOOK=[];
+var BOOK=[];
+var GREL={'-5':'Generacija prapraprapradjedova','-4':'Generacija praprapradjedova','-3':'Generacija prapradjedova','-2':'Generacija pradjedova','-1':'Generacija djedova','0':'Generacija roditelja','1':'Moja generacija','2':'Generacija djece','3':'Generacija unuka','4':'Generacija praunuka'};
+function genName(k,Ly){if(ME&&P(ME)&&Ly.g[ME]!=null){const d=Ly.g[ME]-k;
+    if(d>=0)return (d+1)+'. koljeno · '+(['ja i moja generacija','roditelji','djedovi i bake','pradjedovi i prabake','prapradjedovi'][d]||'preci');
+    return ['djeca','unuci','praunuci','prapraunuci'][-d-1]||'potomci'}return ROM[k]+'. koljeno'}
+function genYears(k,Ly){const y=Object.values(D.persons).filter(p=>!p.deleted&&Ly.g[p.id]===k).map(p=>parseInt(String(p.born||'').slice(0,4))).filter(n=>n>1000).sort((a,b)=>a-b);
+  return y.length?'rođ. '+(y[0]===y[y.length-1]?y[0]+'.':y[0]+'.–'+y[y.length-1]+'.'):''}
 function bAfterRender(){const b=$('#book');if(!b)return;const o=(location.hash.match(/knjiga\?o=([\w-]+)/)||[])[1];
-  const t=o&&document.getElementById('bk-'+o);if(t)b.scrollLeft=t.offsetLeft-b.offsetLeft;else if(bAfterRender.pos)b.scrollLeft=bAfterRender.pos;
+  const t=document.getElementById('bk-'+(o||(bAfterRender.pos==null&&ME)||'-'));if(t)b.scrollLeft=t.offsetLeft-b.offsetLeft;else if(bAfterRender.pos)b.scrollLeft=bAfterRender.pos;
   const mark=()=>{const i=Math.round(b.scrollLeft/Math.max(1,b.clientWidth)),pg=b.children[i];if(!pg)return;const g=pg.dataset.gen;document.querySelectorAll('[data-a=bgen]').forEach(x=>{const on=x.dataset.v===g;x.classList.toggle('on',on);if(on&&x.scrollIntoView)x.parentNode.scrollLeft=x.offsetLeft-x.parentNode.offsetLeft-40})};
   let tm;b.addEventListener('scroll',()=>{bAfterRender.pos=b.scrollLeft;clearTimeout(tm);tm=setTimeout(mark,80)},{passive:true});mark()}
+
+loadMe();render();if(A)sync();
